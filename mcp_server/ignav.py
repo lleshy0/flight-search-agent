@@ -15,6 +15,8 @@ from typing import Literal, NotRequired, TypedDict
 
 BASE_URL = "https://ignav.com/api"
 API_KEY = os.environ.get("IGNAV_API_KEY")
+if not API_KEY:
+    raise RuntimeError("IGNAV_API_KEY is not set (run with: uv run --env-file .env ...)")
 MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
 DEFAULT_MARKET = "NL"  # sets the currency too: NL prices in EUR
@@ -67,8 +69,9 @@ async def _request(method: str, path: str, **kwargs) -> dict:
 
 
 def _clean(d: dict) -> dict:
-    """Drop unset values: None, and the "", [] or {} some MCP clients send for blank optional
-    fields, also inside nested dicts (time ranges, legs). 0 and False are real values and stay.
+    """Drop unset values: None, and the "", [] or {} some MCP clients send for blank text, list
+    or object fields, also inside nested dicts (time ranges, legs). 0 and False are real values
+    and stay. Blank numbers ("" for an int) never get here: the MCP SDK rejects them first.
     Called on a function's locals() before any other local is assigned, this builds the
     request body, since our parameter names match Ignav's fields."""
     cleaned = {}
@@ -178,7 +181,6 @@ async def search_flights(
     cabin_class: Cabin = "economy",
     max_stops: int | None = None,
     max_price: int | None = None,
-    min_carry_on_bags: int | None = None,
     min_checked_bags: int | None = None,
     departure_time_range: TimeRange | None = None,
     return_time_range: TimeRange | None = None,
@@ -215,7 +217,6 @@ async def search_multi_city(
     children: int = 0,
     cabin_class: Cabin = "economy",
     max_price: int | None = None,
-    min_carry_on_bags: int | None = None,
     min_checked_bags: int | None = None,
     airlines_include: list[str] | None = None,
     airlines_exclude: list[str] | None = None,
@@ -245,12 +246,14 @@ async def search_cheapest_dates(
     max_stops: int | None = None,
     max_price: int | None = None,
     min_checked_bags: int | None = None,
+    min_carry_on_bags: int | None = None,  # cheapest-dates only: exact searches reject positive values
     departure_time_range: TimeRange | None = None,
     market: str = DEFAULT_MARKET,
 ) -> dict:
     """Lowest fare per departure date between start_date and end_date (inclusive, max 31 days).
 
     stay_days: omit for one-way, or 0-365 to price a return that many days later.
+    min_carry_on_bags: only this tool can filter on included carry-on bags; flight searches can't.
     Prices are indicative only; call search_flights on the chosen date to get bookable itineraries.
     """
     body = {"market": DEFAULT_MARKET} | _clean(locals())  # a blank market falls back to ours, not Ignav's US
